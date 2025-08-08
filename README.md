@@ -61,6 +61,6 @@ install.packages(c("usethis", "tidyverse", "arrow", "duckdb", "DBI", "dbplyr", "
 
 This work is licensed under a Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0). You are free to share and adapt this material for non-commercial purposes with proper attribution.
 
-**Citation:** McClure, J., Armstrong, E., & Saia, S. (2026). *Big data analytics with R: Arrow and DuckDB* [Workshop]. useR! 2025 Conference. Durham, NC
+**Citation:** McClure, J., Armstrong, E., & Saia, S. M. (2026). *Big data analytics with R: Arrow and DuckDB* [Workshop]. useR! 2025 Conference. Durham, NC
 
 NSF Acknowledgement: This material is based upon work supported by the National Science Foundation under Grant #DGE-2222148. Any opinions, findings, and conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the views of the National Science Foundation.
