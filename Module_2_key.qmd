@@ -1,0 +1,995 @@
+---
+title: "Module_2_arrow-key"
+author: "Elyse, Jeanne & Sheila"
+format: 
+  html: 
+    toc: true
+    toc-depth: 4
+    toc-location: right
+    code-fold: true
+  pdf:
+    toc: true
+    toc-depth: 4
+    toc-location: right
+editor: visual
+---
+
+## 🎯 Learning Objectives (Module 2)
+
+By the end of this module, you will be able to:
+
+-   **Understand** the mindset shift from "loading" to "viewing" data
+
+-   **Read and explore** large datasets without loading them into memory
+
+-   **Convert** between file formats (CSV ↔ Parquet) efficiently
+
+-   **Apply** basic dplyr operations with Arrow's lazy evaluation
+
+-   **Optimize** query performance through proper `collect()` placement
+
+-   **Build** multi-step pipelines that process gigabytes of data
+
+## 🧠 The Mindset Shift: "View" Don't "Load"
+
+### 💡 Traditional R Approach vs. Arrow Approach
+
+**Traditional R thinking**:
+
+```         
+# Load EVERYTHING into memory first 
+
+data <- read_csv("huge_file.csv")  # 💥 Crash! 
+
+data |> 
+  filter(year == 2023)
+```
+
+**Arrow thinking**:
+
+```         
+# Create a "view" of the data, then filter 
+
+data <- open_dataset("huge_file.csv")  # ✅ Instant! d
+
+ata |> filter(year == 2023) 
+  |> collect()  # Only brings filtered results to memory
+```
+
+## 💡 **Rule of thumb:**
+
+-   **\< 100MB**: Regular R is fine
+
+-   **100MB - 1GB**: Arrow is nice to have
+
+-   **1GB+**: Arrow becomes really valuable
+
+-   **RAM size+**: Arrow is essential
+
+### 🔍 Key Concept: Lazy Evaluation
+
+Arrow uses **lazy evaluation** - it builds up a query plan without actually executing it until you call `collect()`.
+
+Think of it like:
+
+-   **Traditional R**: "Cook the entire meal, then throw away what you don't want"
+
+-   **Arrow**: "Plan the meal, shop for only what you need, then cook just that"
+
+## 🚀 Arrow Basics (10 minutes)
+
+### Setting Up Our Big Data Playground - done in pre-workshop materials
+
+We're working with the **real Seattle Library dataset** - over 40 million rows of checkout data!
+
+### Step 1: Create a Directory
+
+First, let's create a special folder to store our data:
+
+```{r eval=FALSE}
+
+# Create a "data" directory if it doesn't exist already 
+# Using showWarnings = FALSE to suppress warning if directory already exists  
+
+#dir.create("data", showWarnings = FALSE)
+```
+
+### Step 2: Download the Dataset
+
+Now for the fun part! We'll download the Seattle Library dataset (9GB).
+
+⚠️ **Important:** This is a 9GB file, so:
+
+-   Make sure you have enough disk space
+
+```{r eval=FALSE}
+
+# Download Seattle library checkout dataset: 
+
+# 1. Fetch data from AWS S3 bucket URL 
+# 2. Save to local data directory 
+# 3. Use resume = TRUE to allow continuing interrupted downloads  
+
+#curl::multi_download("https://r4ds.s3.us-west-2.amazonaws.com/seattle-library-checkouts.csv", "data/seattle-library-checkouts.csv", resume = TRUE )
+```
+
+Why USE: [`curl::multi_download()`](https://jeroen.r-universe.dev/curl/reference/multi_download.html)
+
+-   Shows a progress bar (great for tracking large downloads)
+-   Can resume if interrupted (super helpful for big files!)
+-   More reliable than base R download methods
+
+### Step 3: Verify the Download
+
+After the download completes, let's make sure everything worked:
+
+```{r}
+# Check if the Seattle library dataset file exists and print its size:
+# 1. Verify file exists at specified path
+# 2. Calculate file size in gigabytes by dividing bytes by 1024^3
+
+file.exists("data/seattle-library-checkouts.csv")
+file.size("data/seattle-library-checkouts.csv") / 1024^3  # Size in GB
+```
+
+"Who thinks their computer could handle loading 9GB into memory?"
+
+### 🔬 The `open_dataset()` Magic
+
+Now let's see the fundamental difference between `read_csv()` and `open_dataset()`:
+
+**DON'T RUN!**
+
+```{r eval=FALSE}
+
+# Traditional approach - would crash most computers!
+
+#seattle_library_checkouts <- read_csv("data/seattle-library-checkouts.csv") # DON'T RUN! 
+```
+
+**RUN**
+
+```{r}
+
+#load in the packages and install if needed with code below
+
+
+# Function to check and install required packages
+required_packages <- c("tidyverse", "arrow")
+
+# Install missing packages
+for (pkg in required_packages) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    install.packages(pkg)
+    #library(pkg, character.only = TRUE)
+  }
+}
+
+#Load libraries
+lapply(required_packages, library, character.only = TRUE)
+```
+
+## What `open_dataset()` does:
+
+-   Creates an Arrow dataset object that "points to" your CSV file
+
+-   Doesn't actually load the data into memory yet
+
+-   Acts like a "view" or "window" into your data
+
+-   When you run this code with [`open_dataset()`](https://arrow.apache.org/docs/r/reference/open_dataset.html), Arrow does something clever:
+
+    1.  It peeks at the first few thousand rows
+
+    2.  Figures out what kind of data is in each column
+
+    3.  Creates a roadmap of the data
+
+    4.  Then... it stops!
+
+    That's right - it doesn't load the whole 9GB file. Imagine Arrow as a really efficient librarian who:
+
+    -   Creates an index of where everything is
+
+    -   Only gets books (data) when you specifically ask for them
+
+    -   Keeps track of what's where without moving everything
+
+```{r}
+# Arrow approach - creates a "view" without loading 
+seattle_csv <- open_dataset("data/seattle-library-checkouts.csv", format = "csv")
+
+# View Object
+seattle_csv
+
+library(glue) # string interpolation - cleaner alternative to paste()
+
+# Check out how much memory this is using.
+glue("Memory used by Arrow object: {format(object.size(seattle_csv), units = 'KB')}")
+
+# Let's see what the file size we are actually working with 
+file_size_bytes <- file.size("data/seattle-library-checkouts.csv")
+file_size_gb <- file_size_bytes / (1024^3)  # Convert to GB
+glue("Estimated file size: {round(file_size_gb, 2)} GB")
+
+# Peek at the structure without loading 
+seattle_csv |> 
+  glimpse()
+```
+
+## 🔍 **Handling the ISBN Null Issue**
+
+When we glimpse our dataset, we notice that the **ISBN column is showing as null**. This is a common issue when working with large datasets where Arrow's automatic schema detection encounters parsing challenges.
+
+### Why This Matters
+
+**For Arrow:**
+
+-    Arrow creates a schema based on the first few thousand rows it samples
+
+-    If it encounters mixed data types or parsing issues in the ISBN field, it may default to null
+
+-    This means we lose valuable bibliographic information that could be used for:
+
+    -    Identifying unique editions of books
+
+    -    Linking to external book databases
+
+    -    Analyzing publication patterns
+
+```{r}
+# Remove the current object that has the null ISBN issue
+rm(seattle_csv)
+
+# Recreate Seattle library checkout.csv data:
+# 1. Specify the CSV file path
+# 2. Set ISBN column to be read as string type to preserve leading zeros
+# 3. Define CSV as the file format
+seattle_csv <- open_dataset(
+  sources = "data/seattle-library-checkouts.csv", 
+  col_types = schema(ISBN = string()),
+  format = "csv"
+)
+
+#inspect
+glimpse(seattle_csv)
+```
+
+**Key insight**: Arrow creates a "catalog" or "view" of your data without actually reading it into memory!
+
+### 🎯 **Understanding `collect()`: The Bridge Between Arrow and R**
+
+**What is `collect()`?**
+
+-   `collect()` is the function that **executes** your Arrow query and brings the results into regular R memory
+
+-   Think of it as the "Go!" button that turns your query plan into actual data
+
+### 🔍 Exploring Structure Without Loading
+
+```{r}
+
+# 1. BASIC DATASET INFO (no data loading)
+glue("=== DATASET OVERVIEW ===")
+glue("File size: {format(file.size('data/seattle-library-checkouts.csv'), units = 'GB')}")
+glue("Memory used by Arrow object: {format(object.size(seattle_csv), units = 'KB')}")
+
+# 2. SCHEMA EXPLORATION (metadata only)
+seattle_csv$schema  # Column types
+glue("Number of columns: {ncol(seattle_csv)}")
+
+# 3. SMART SAMPLING (minimal data loading)
+seattle_csv |> 
+  slice_sample(n = 1000) |>  # Random sample instead of just head()
+  glimpse()
+
+# 4. COLUMN-WISE EXPLORATION (targeted queries)
+seattle_csv |> 
+  summarise(
+    total_rows = n(),
+    across(where(is.character), ~n_distinct(.x, na.rm = TRUE)),
+    across(where(is.numeric), list(min = ~min(.x, na.rm = TRUE), 
+                                   max = ~max(.x, na.rm = TRUE)))
+  ) |> 
+  collect()
+
+##instead save so you don't have to re-processing the massive dataset to explore later!:
+
+# Save the summary (this might take a few minutes for 10GB)
+data_summary <- seattle_csv |> 
+  summarise(
+    total_rows = n(),
+    across(where(is.character), ~n_distinct(.x, na.rm = TRUE)),
+    across(where(is.numeric), list(min = ~min(.x, na.rm = TRUE), 
+                                   max = ~max(.x, na.rm = TRUE)))
+  ) |> 
+  collect()
+
+# Then print when it's done
+data_summary
+
+# 5. CHECK FOR MISSING DATA
+missing_nas <- seattle_csv |> 
+  summarise(across(everything(), ~sum(is.na(.x)))) |> 
+  collect()
+
+#inspect
+missing_nas
+
+# Check for missing values in character columns
+missing_char <- seattle_csv |> 
+  summarise(across(where(is.character), ~sum(is.na(.x) | .x == ""))) |> 
+  collect()
+
+#inspect
+missing_char
+
+```
+
+```{r}
+# Get a cleaner view with percentages
+total_rows <- seattle_csv |> 
+  summarise(n = n()) |> 
+  collect() |> 
+  pull(n)
+
+missing_char |> 
+  pivot_longer(everything(), 
+               names_to = "column", 
+               values_to = "missing_count") |> 
+  mutate(missing_percentage = round(missing_count / total_rows * 100, 2)) |> 
+  arrange(desc(missing_count))
+```
+
+### 📋 "Look Ma, No Loading!"
+
+Showing Query Plans with `show_query()`
+
+Before we execute anything, let's see what Arrow plans to do:
+
+```{r eval =FALSE}
+query_plan <- seattle_csv |>   
+  filter(CheckoutYear == 2020) |>   
+  group_by(MaterialType) |>   
+  summarise(total_checkouts = sum(Checkouts))  # See what Arrow will do (without doing it!)
+
+query_plan |> 
+  show_query()  # This shows the execution plan - Arrow is incredibly smart about optimization!
+```
+
+## Reading the Plan (bottom to top):
+
+**Node 0: SourceNode{}**
+
+-   Start with your CSV file
+
+**Node 1: FilterNode{filter=(CheckoutYear == 2020)}**
+
+-   Filter to only 2020 data (reduces data early!)
+
+**Node 2: ProjectNode{projection=\["total_checkouts": Checkouts, MaterialType\]}**
+
+-   Select only the columns needed: `Checkouts` (renamed to `total_checkouts`) and `MaterialType`
+
+**Node 3: GroupByNode{keys=\["MaterialType"\], aggregates=\[hash_sum(...)\]}**
+
+-   Group by MaterialType and sum up the checkouts
+
+**Node 4: SinkNode{}**
+
+-   Final output destination
+
+## What this shows you:
+
+✅ **Arrow is being smart!**
+
+-   It filters first (reduces data volume)
+
+-   Only selects needed columns (reduces memory)
+
+-   Does the grouping efficiently with hash operations
+
+-   Plans the whole operation before executing
+
+**When do you need `collect()`?**
+
+**The Golden Rule:**
+
+-   **Arrow operations**: filter, select, group_by, summarise → **no collect() needed**
+
+-   **R operations**: ggplot, view(), head(), mathematical operations → **collect() first**
+
+### 🤔 **Why This Matters**
+
+Without `collect()`, you're working with an Arrow query object:
+
+```{r}
+# This creates a PLAN, not data
+query <- seattle_csv |> 
+  filter(CheckoutYear == 2023)
+
+class(query)  # "ArrowTabular" - not a data frame!
+
+# This executes the plan and gives you data  
+actual_data <- query |> 
+  collect()
+class(actual_data)  # "data.frame" - now you can use it in R!
+```
+
+## 🏗️ File Format Magic (15 minutes)
+
+### 📊 CSV vs Parquet: The Speed Revolution
+
+Let's convert our massive CSV to Parquet and see the dramatic improvements:
+
+```{r}
+# Convert the entire dataset efficiently 
+
+seattle_csv |>   
+  write_dataset("data/parquet/seattle_parquet/", format = "parquet")
+```
+
+```{r eval=FALSE}
+
+# Compare file sizes
+csv_size <- file.size("data/seattle-library-checkouts.csv") 
+parquet_dir_size <- sum(file.size(list.files("data/parquet/seattle_parquet/",                                              
+                                             full.names = TRUE, recursive = TRUE))) 
+# Show the comparison
+glue("Original CSV size: {csv_size}")
+glue("Parquet size: {parquet_dir_size}")  # Changed from parquet_size
+glue("Size reduction: {round(as.numeric(csv_size) / as.numeric(parquet_dir_size), 1)}x smaller!")
+```
+
+**🎯 Best practice for reproducible analysis:**
+
+1.  Share your **code** on GitHub (always \< 1MB)
+
+2.  Include **sample data** for testing (\< 25MB)
+
+3.  **Document** where to get full dataset
+
+4.  **Provide** conversion scripts for creating Parquet files
+
+### ⚡ Speed Test: CSV vs Parquet
+
+```{r}
+
+# Time reading and filtering
+csv_time <- system.time({csv_result <- seattle_csv |>      
+  filter(CheckoutYear == 2020) |>      
+  collect() })
+
+seattle_parquet <- open_dataset("data/parquet/seattle_parquet/")
+
+parquet_time <- system.time({parquet_result <- seattle_parquet |>      
+  filter(CheckoutYear == 2020) |>      
+  collect() })  
+
+#check the speed of files
+
+glue("CSV time: {round(csv_time[3], 2)} seconds")
+glue("Parquet time: {round(parquet_time[3], 2)} seconds")
+
+if (parquet_time[3] > 0) {
+  glue("Speed improvement: {round(csv_time[3] / parquet_time[3], 1)}x faster")
+} 
+ 
+# Verify we got the same results 
+
+glue("CSV result rows: {nrow(csv_result)}")
+glue("Parquet result rows: {nrow(parquet_result)}")
+```
+
+### 🔄 Working with Your Optimized Dataset
+
+```{r}
+
+#check out glimpse
+seattle_parquet |>    
+  glimpse()  
+
+# Let's see what columns we have to work with 
+seattle_parquet |>    
+  head() |>    
+  collect()
+
+# Quick exploration - much faster now! 
+```
+
+**Key takeaways**:
+
+-   Parquet files are typically 3-5x smaller than CSV
+
+-   Parquet files are often 5-10x faster to read
+
+-   Parquet preserves data types (no more parsing!)
+
+## 🛠️ Your First Big Data Pipeline (20 minutes)
+
+Now let's build progressively more complex pipelines, always remembering: **filter early, collect late!**
+
+### 🎯 Exercise 1: Basic Filtering (5 minutes)
+
+**Question**: "What happened to library usage during the pandemic year of 2020?"
+
+```{r}
+pandemic_data <- seattle_parquet  |>   
+  filter(CheckoutYear == 2020) |>   
+  collect()  
+# Check what we got - from 40+ million rows to... 
+```
+
+```{r}
+pandemic_data |>   
+  count(MaterialType, sort = TRUE)
+```
+
+**Turn and talk** (2 minutes): "What do you notice about the material types during 2020? Any surprises?" Why might we be interested in this year?
+
+**Key insight**: We filtered from 40+ million rows to a manageable subset BEFORE bringing data into memory!
+
+### 📊 Exercise 2: Group and Summarize (7 minutes)
+
+**Question**: "Which types of materials were most popular in 2020 - did people shift to digital?"
+
+#### Build the pipeline: filter → group → summarise → arrange → collect
+
+```{r}
+
+ material_summary <- seattle_parquet |>   
+   filter(CheckoutYear == 2020) |>   
+   group_by(MaterialType) |>   
+   summarise(total_checkouts = sum(Checkouts),     
+             avg_checkouts = mean(Checkouts),     
+             checkout_count = n(),     
+             .groups = "drop"   ) |>   
+   arrange(desc(total_checkouts)) |>   
+   collect()
+
+# Look at the summary
+material_summary
+```
+
+**Turn and talk** (2 minutes): "What do you notice, did people shift to digital 2020? Any surprises?"
+
+Extension to this exercise below
+
+### 📈 Exercise 3: Multi-step Pipeline with Visualization (8 minutes)
+
+**Question**: "How did checkout patterns change month by month during 2020?"
+
+#### Build the pipeline: filter → group → summarise → collect → plot
+
+```{r}
+
+monthly_trends <- seattle_parquet |>   
+  filter(CheckoutYear == 2020) |>   
+  group_by(CheckoutMonth, MaterialType) |>   
+  summarise(total_checkouts = sum(Checkouts),.groups = "drop") |>   
+  collect() 
+
+#inspect
+monthly_trends
+
+```
+
+Create Visualization
+
+```{r}
+monthly_trends |>   
+  ggplot(aes(x = CheckoutMonth, y = total_checkouts, color = MaterialType)) +   
+  geom_line(linewidth = 1) +   
+  geom_point() +   
+  scale_x_continuous(breaks = 1:12, labels = month.abb) +   
+  scale_y_continuous(labels = scales::comma) +   
+  labs(title = "Seattle Library Checkouts by Material Type (2020)",     
+       subtitle = "Monthly trends during the pandemic year - real data!",     
+       x = "Month",     
+       y = "Total Checkouts",     
+       color = "Material Type") +   
+  theme_minimal() +   
+  theme(legend.position = "bottom")
+```
+
+**Gallery walk** (2 minutes): Look at others' results. What patterns do you see?
+
+When was the library closure most visible?
+
+## ⚠️ Troubleshooting Checkpoint (5 minutes)
+
+### 🚨 Common Mistakes and How to Fix Them
+
+#### 1. **Premature `collect()`** - The #1 Error!
+
+```{r}
+# ❌ WRONG: Collecting too early 
+seattle_parquet |>   
+  collect() |>  # Brings ALL data into memory first!   
+  filter(CheckoutYear == 2020)   # Then filters - too late!  
+
+# ✅ RIGHT: Filter first, collect last se
+seattle_parquet |>   
+  filter(CheckoutYear == 2020) |>  # Filter on disk   
+  collect() # Only bring filtered data to memory
+```
+
+#### 2. **Forgetting `collect()`** - Nothing Happens!
+
+```{r}
+# ❌ This creates a query plan but doesn't execute it 
+query_only <- seattle_parquet |>
+  filter(CheckoutYear==2020) |>
+  summarize(total = sum(Checkouts))
+
+print("Query plan created, but no results yet:") 
+print(class(query_only))
+
+
+# ✅ Execute the query with collect() a
+actual_result <- 
+  query_only |> 
+  collect() 
+print("Now we have actual results:") 
+print(actual_result)
+
+```
+
+#### 3. **File Path Issues**
+
+```{r}
+#❌ Common file path errors 
+
+#open_dataset("wrong_path.csv")  # File not found 
+
+#open_dataset("folder_name.csv") # Trying to read folder as file  
+
+# ✅ Check if files exist first i
+
+if (file.exists("data/parquet/seattle_parquet/")) {   
+  data <- open_dataset("data/parquet/seattle_parquet/")   
+  print("✅ Parquet dataset opened successfully!") 
+} else if (file.exists("data/seattle-library-checkouts.csv")) {   
+  data <- open_dataset("data/seattle-library-checkouts.csv", format = "csv")   
+  print("✅ CSV dataset opened successfully!") 
+} else {   
+  print("❌ Please check your file path - dataset not found") 
+}
+```
+
+## 🎯 Arrow Choose-Your-Own Challenge (15 minutes)
+
+Work in pairs. Choose the challenge that matches your comfort level, then try the stretch goals!
+
+### 🟢 Beginner Challenge 1A: Material Type Analysis
+
+**Goal**: Build a dplyr pipeline to summarize checkouts by MaterialType across all years.
+
+**Your mission**:
+
+1.  Start with the Arrow dataset
+
+2.  Group by MaterialType
+
+3.  Calculate total checkouts, average checkouts, and count of records
+
+4.  Sort by total checkouts (highest first)
+
+5.  Don't forget to `collect()`!
+
+**Helpful hints for beginners**:
+
+-   Use `group_by()` to group your data
+
+-   Use `summarise()` to calculate statistics
+
+-   Use `sum()` for totals, `mean()` for averages, `n()` for counts
+
+-   Use `arrange(desc())` to sort from highest to lowest
+
+-   End with `collect()` to bring the results into R
+
+```{r}
+# Your code here! Use the real Seattle data
+
+material_analysis <- seattle_parquet |>
+  # Step 1: Group by MaterialType
+  group_by(MaterialType) |>
+  # Step 2: Calculate summaries
+  summarise(
+    total_checkouts = sum(Checkouts),
+    avg_checkouts = mean(Checkouts),
+    record_count = n(),
+    .groups = "drop"
+  ) |>
+  # Step 3: Sort by total checkouts
+  arrange(desc(total_checkouts)) |>
+  # Step 4: Collect the results
+  collect()
+
+# Print your results
+material_analysis
+```
+
+**Goal**: Analyze checkout trends by year to see library usage patterns.
+
+**Your mission**:
+
+1.  Start with the Arrow dataset
+
+2.  Group by CheckoutYear
+
+3.  Calculate total checkouts and number of unique titles per year
+
+4.  Sort by year (oldest first)
+
+5.  Don't forget to `collect()`!
+
+**Helpful hints for beginners**:
+
+-   Use `group_by(CheckoutYear)` to group by year
+
+-   Use `n_distinct(Title)` to count unique titles
+
+-   Use `arrange(CheckoutYear)` to sort chronologically (no `desc()` needed)
+
+```{r}
+# Your code here! Analyze trends over time
+
+yearly_analysis <- seattle_parquet |>
+  # Step 1: Group by year
+  group_by(CheckoutYear) |>
+  # Step 2: Calculate summaries
+  summarise(
+    total_checkouts = sum(Checkouts),
+    unique_titles = n_distinct(Title),
+    .groups = "drop"
+  ) |>
+  # Step 3: Sort by year
+  arrange(CheckoutYear) |>
+  # Step 4: Collect the results
+  collect()
+
+# Print your results
+yearly_analysis
+```
+
+**Stretch goals**:
+
+-   Add a filter for years 2015-2023 only
+
+-   Create a simple bar chart of your results
+
+-   Calculate what percentage each material type represents
+
+### 🟡 Intermediate: Multi-step Pipeline + Visualization
+
+### Intermediate Challenge 1A Extension intermediate
+
+**Goal**: Create a quick visualization to see what is happening
+
+**Your mission**:
+
+1.  Use the 2020 pandemic data we already created
+
+2.  Count how many times each MaterialType appears
+
+3.  Sort from most to least common
+
+4.  Create a horizontal bar chart
+
+5.  Add clear labels and title
+
+```{r}
+
+# Quick bar chart of material types
+pandemic_data |> 
+  count(MaterialType, sort = TRUE) |> 
+  ggplot(aes(x = reorder(MaterialType, n), y = n)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Library Checkouts by Material Type (2020)",
+       x = "Material Type", y = "Number of Checkouts")
+```
+
+Challenge 1B: Digital vs Physical Comparison
+
+**Goal**: Categorize materials as digital or physical and compare their usage
+
+**Your mission**:
+
+1.  First explore what material types exist in our data
+
+2.  Create logical categories (Digital, Physical, Other)
+
+3.  Group by these new categories
+
+4.  Calculate totals and counts for each category
+
+5.  Sort by total checkouts
+
+```{r}
+# See all the material types we have
+material_summary$MaterialType
+```
+
+Then categorize them:
+
+```{r}
+
+# Compare digital vs physical
+material_summary |> 
+  mutate(category = case_when(
+    MaterialType == "EBOOK" ~ "Digital",
+    MaterialType == "AUDIOBOOK" ~ "Digital", 
+    MaterialType == "BOOK" ~ "Physical",
+    str_detect(MaterialType, "VIDEODISC|DVD") ~ "Physical",
+    str_detect(MaterialType, "SOUNDDISC|CD") ~ "Physical",
+    str_detect(MaterialType, "VIDEO|VIDEOCASS") ~ "Physical",
+    str_detect(MaterialType, "MUSIC|SOUND") ~ "Physical",
+    MaterialType %in% c("REGPRINT", "LARGEPRINT") ~ "Physical",
+    MaterialType == "MAP" ~ "Physical",
+    MaterialType == "ATLAS" ~ "Physical",
+    TRUE ~ "Other"
+  )) |> 
+  group_by(category) |> 
+  summarise(
+    total_checkouts = sum(total_checkouts),
+    material_count = n()
+  ) |> 
+  arrange(desc(total_checkouts))
+```
+
+### Exercise 2 Extension intermediate Challenge 1
+
+**Goal**: Analyze checkout trends by month during 2020 (pandemic year)
+
+**Your mission**:
+
+1.  Filter to 2020 data only
+
+2.  Group by CheckoutMonth
+
+3.  Calculate total checkouts per month
+
+4.  Create a line chart showing the monthly trend
+
+5.  Add a title that mentions "Pandemic Impact"
+
+```{r}
+
+ # Add your pipeline here for monthly 2020 analysis
+  monthly_trends <- seattle_parquet |>
+  filter(CheckoutYear == 2020) |>
+  group_by(CheckoutMonth) |>
+  summarise(total_checkouts = sum(Checkouts), .groups = "drop") |>
+  collect()
+
+
+
+# Create line chart Here
+monthly_trends |>
+  ggplot(aes(x = CheckoutMonth, y = total_checkouts)) +
+  geom_line(size = 1.2, color = "steelblue") +
+  geom_point(size = 2, color = "steelblue") +
+  labs(
+    title = "Monthly Library Checkouts During 2020 - Pandemic Impact",
+    x = "Month", 
+    y = "Total Checkouts"
+  ) +
+  theme_minimal()
+  
+
+  
+```
+
+**Stretch goals**:
+
+-   Add monthly granularity to see seasonal patterns
+
+-   Include confidence intervals or trend lines
+
+-   Compare pre-pandemic (2015-2019) vs. pandemic (2020-2023) trends
+
+### 🔄 Optional Brain Break
+
+Feeling overwhelmed? It's totally normal! Take a brain break - you can always do these laterr:
+
+-   Step away from your computer and stretch
+
+-   Grab some water or coffee
+
+-   Check out the [GitHub examples](https://github.com/your-workshop-repo) for inspiration
+
+-   Ask a neighbor how they're approaching the challenge
+
+## 🧠 Key Takeaways from Module 2
+
+### ✅ What You've Accomplished Today
+
+🎉 **Congratulations!** You've just:
+
+-   Processed datasets without loading them entirely into memory
+
+-   Converted massive files for 10x+ speed improvements
+
+-   Used the same dplyr syntax on much larger datasets
+
+-   Built multi-step analytical pipelines with lazy evaluation
+
+-   Learned to optimize performance with proper `collect()` placement
+
+### 🔑 Essential Arrow Patterns to Remember
+
+1.  **The Lazy Evaluation Pattern**:
+
+    ```         
+    open_dataset("file") |>     # Create view 
+      filter() |>               # Filter on disk   
+      group_by() |>             # Group on disk 
+      summarise() |>            # Aggregate on disk 
+      collect()                 # Bring results to memory
+    ```
+
+2.  **The File Conversion Pattern**:
+
+    ```         
+    open_dataset("data.csv") |> 
+      write_dataset("data_parquet/", format = "parquet")
+    ```
+
+3.  **What's under the hood**
+
+    ```         
+    query |> 
+      show_query()        # See what will happen 
+
+    query |> 
+      collect()           # Actually execute
+    ```
+
+### 🚀 Coming Up: Module 3 - DuckDB Superpowers
+
+In our next module, we'll add even more power to your toolkit:
+
+-   **Complex joins** across multiple datasets
+
+-   **Window functions** for advanced analytics
+
+-   **SQL integration** that feels like dplyr
+
+-   **When to choose** Arrow vs. DuckDB for different tasks
+
+**The promise continues**: Same familiar syntax, even more analytical power!
+
+### 📝 Quick Self-Assessment
+
+Before we move on, take 30 seconds to reflect:
+
+**I feel confident that I can**:
+
+-   Explain the difference between "loading" and "viewing" data
+
+-   Use `open_dataset()` instead of `read_csv()` for large files
+
+-   Place `collect()` in the right spot in my pipelines
+
+-   Convert CSV files to Parquet format
+
+-   Build multi-step Arrow pipelines
+
+**Please write on a sticky note if you'd like more practice with**:
+
+-   Understanding when to use `collect()`
+
+-   File format conversions
+
+-   Complex pipeline building
+
+-   Performance optimization
+
+-   Troubleshooting errors
+
+*Ready to add database superpowers to your toolkit? Let's continue to Module 3: DuckDB!*
+
+*NSF Acknowledgement: This material is based upon work supported by the National Science Foundation under Grant #DGE-2222148. Any opinions, findings, and conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the views of the National Science Foundation.*
