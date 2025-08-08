@@ -12,12 +12,14 @@ Welcome to the "*R You out of Memory Short Course*" at the 2026 useR!! confernce
 
 As a REMINDER: When you open this Quarto document (.qmd file):
 
-1. **\*\*Make sure it's in your project folder\*\*** alongside your data folder and .Rproj file
-2. **\*\*If it's not in the right place:\*\***
- - Use **\*\*File → Save As\*\*** and navigate to your \`useR2026_bigdata_shortcourse\` folder
- - Or drag/move the file into your project folder using your computer's file manager
-3. **\*\*Open your .Rproj file\*\*** to ensure RStudio is working in the correct directory
-4. **\*\*Verify everything is ready:\*\***
+1.  **\*\*Make sure it's in your project folder\*\*** alongside your data folder and .Rproj file
+2.  **\*\*If it's not in the right place:\*\***
+
+-   Use **\*\*File → Save As\*\*** and navigate to your \`useR2026_bigdata_shortcourse\` folder
+-   Or drag/move the file into your project folder using your computer's file manager
+
+3.  **\*\*Open your .Rproj file\*\*** to ensure RStudio is working in the correct directory
+4.  **\*\*Verify everything is ready:\*\***
 
 Our dataset is to large to be housed in github or as a file. We can add it as a zip file but after all we are laearning how to havndle large data in R So...we will do so.
 
