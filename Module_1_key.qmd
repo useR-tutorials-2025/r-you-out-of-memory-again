@@ -43,7 +43,7 @@ The tools we’re introducing today **each play a specific role** in helping us 
 -   
 
     | Tool     | Purpose                                                                                                                                                                            |
-    |------------------------|-----------------------------------------------|
+    |-------------------------|-----------------------------------------------|
     | `arrow`  | 🗂️ (Columnar storage + lazy reading) → Efficiently reads large datasets **without loading the whole file into memory.** Supports fast filtering and streaming from disk.           |
     | `DBI`    | 🔌 (Database connection interface) → Provides a **common language to connect R to databases.** DuckDB uses it to talk to R.                                                        |
     | `duckdb` | 🚀 (Fast in-process SQL database) → Allows you to **query large datasets using SQL syntax inside R.** Works especially well for joins, aggregations, and window functions.         |
@@ -223,6 +223,8 @@ starwars |>
 
 ### 🔍 filter(): Keep only rows that meet a condition
 
+**👉 Your Turn** **⤵**
+
 ```{r}
 
 # Single condition
@@ -249,6 +251,8 @@ starwars |>
 
 **Advanced `filter()`ing**
 
+**👉 Your Turn** **⤵**
+
 ```{r}
 # Using %in% for multiple values
 starwars |> 
@@ -264,6 +268,8 @@ starwars |>
 ```
 
 ### 🔧 select(): Pick specific columns
+
+**👉 Your Turn** **⤵**
 
 ```{r}
 # Select specific columns
@@ -292,6 +298,8 @@ starwars |>
 
 **Advanced `Select()` ing**
 
+**👉 Your Turn** **⤵**
+
 ```{r}
 # Rename while selecting
 starwars |> 
@@ -303,6 +311,8 @@ starwars |>
 ```
 
 ## 📏 arrange(): Sort rows
+
+**👉 Your Turn** **⤵**
 
 ```{r}
 # Sort ascending (default)
@@ -323,6 +333,8 @@ starwars |>
 ```
 
 ### ➕ mutate(): Create or Modify names
+
+**👉 Your Turn** **⤵**
 
 ```{r}
 
@@ -364,6 +376,8 @@ starwars |>
 
 ### 📊 group_by()
 
+**👉 Your Turn** **⤵**
+
 ```{r}
 # Group by single variable
 starwars |> 
@@ -375,6 +389,8 @@ starwars |>
 ```
 
 ### summarise()
+
+**👉 Your Turn** **⤵**
 
 ```{r}
 # Single summary
@@ -541,6 +557,8 @@ Now it's your turn to practice! Work with a partner and help each other or take 
 
 ### 🟢 Beginner Challenge (5-10 minutes)
 
+**👉 Your Turn** **⤵**
+
 **Goal**: Practice the basic dplyr verbs with the `starwars` dataset.
 
 **Your mission**: Find the tallest character from each homeworld.
@@ -600,6 +618,8 @@ shortest_by_homeworld
 ```
 
 ### 🟡 Intermediate Challenge (10-15 minutes)
+
+**👉 Your Turn** **⤵**
 
 **Goal**: Build a more complex analytical pipeline.
 

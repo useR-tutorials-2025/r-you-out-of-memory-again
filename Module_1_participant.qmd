@@ -43,7 +43,7 @@ The tools we’re introducing today **each play a specific role** in helping us 
 -   
 
     | Tool     | Purpose                                                                                                                                                                            |
-    |------------------------|-----------------------------------------------|
+    |-------------------------|-----------------------------------------------|
     | `arrow`  | 🗂️ (Columnar storage + lazy reading) → Efficiently reads large datasets **without loading the whole file into memory.** Supports fast filtering and streaming from disk.           |
     | `DBI`    | 🔌 (Database connection interface) → Provides a **common language to connect R to databases.** DuckDB uses it to talk to R.                                                        |
     | `duckdb` | 🚀 (Fast in-process SQL database) → Allows you to **query large datasets using SQL syntax inside R.** Works especially well for joins, aggregations, and window functions.         |
@@ -223,6 +223,8 @@ starwars |>
 
 ### 🔍 filter(): Keep only rows that meet a condition
 
+**👉 Your Turn** **⤵**
+
 ```{r}
 
 # Single condition
@@ -232,11 +234,11 @@ starwars |>
 # Multiple conditions (AND)
 # Find all humans from Tatooine
 starwars |> 
-  filter(species == "Human", homeworld == "Tatooine")
+  filter(species == "Human", homeworld == #ADD HOMEWORLD)
 
 # Multiple conditions (OR)
 starwars |> 
-  filter(species == "Human" | species == "Droid")
+  #ADD FUNCTION(species == "Human" | species == "Droid")
 
 # Numeric conditions
 starwars |> 
@@ -256,7 +258,7 @@ starwars |>
 
 # String matching
 starwars |> 
-  filter(str_detect(name, "Skywalker"))
+  #ADD FUNCTION(str_detect(name, "Skywalker"))
 
 # Complex logical conditions
 starwars |> 
@@ -265,10 +267,12 @@ starwars |>
 
 ### 🔧 select(): Pick specific columns
 
+**👉 Your Turn** **⤵**
+
 ```{r}
 # Select specific columns
 starwars |> 
-  select(name, height, mass)
+  select(name,#ADD 2 ADDITIONAL COLUMNS
 
 # Select ranges
 starwars |> 
@@ -276,14 +280,14 @@ starwars |>
 
 # Exclude columns
 starwars |> 
-  select(-films, -vehicles, -starships)
+  #ADD FUNCTION(-films, -vehicles, -starships)
 
 # Select by pattern
 starwars |> 
   select(starts_with("s"))  # species, skin_color, starships
 
 starwars |> 
-  select(ends_with("color"))  # hair_color, skin_color, eye_color
+  #ADD FUNCTION(ends_with("color"))  # hair_color, skin_color, eye_color
 
 starwars |> 
   select(contains("_"))  # hair_color, skin_color, eye_color, birth_year
@@ -292,6 +296,8 @@ starwars |>
 
 **Advanced `Select()` ing**
 
+**👉 Your Turn** **⤵**
+
 ```{r}
 # Rename while selecting
 starwars |> 
@@ -299,10 +305,12 @@ starwars |>
 
 # Select and reorder
 starwars |> 
-  select(name, species, everything())  # name and species first, then everything else
+  #ADD FUNCTION(name, species, everything())  # name and species first, then everything else
 ```
 
 ## 📏 arrange(): Sort rows
+
+**👉 Your Turn** **⤵**
 
 ```{r}
 # Sort ascending (default)
@@ -311,7 +319,7 @@ starwars |>
 
 # Sort descending
 starwars |> 
-  arrange(desc(height))
+  #ADD FUNCTION(desc(height))
 
 # Multiple sort columns
 starwars |> 
@@ -319,21 +327,23 @@ starwars |>
 
 # Handle missing values
 starwars |> 
-  arrange(desc(height), na.last = TRUE)
+  #ADD FUNCTION(desc(height), na.last = TRUE)
 ```
 
 ### ➕ mutate(): Create or Modify names
+
+**👉 Your Turn** **⤵**
 
 ```{r}
 
 # Create new column
 starwars |> 
-  mutate(height_m = height / 100)
+  mutate(height_m = #ADD CALCULATION)
 
 # Multiple new columns
 starwars |> 
   mutate(
-    height_m = height / 100,
+    height_m = #ADD CALCULATION,
     bmi = mass / (height_m^2)
   )
 
@@ -364,10 +374,12 @@ starwars |>
 
 ### 📊 group_by()
 
+**👉 Your Turn** **⤵**
+
 ```{r}
 # Group by single variable
 starwars |> 
-  group_by(species)
+  group_by(#ADD COLUMN)
 
 # Group by multiple variables
 starwars |> 
@@ -376,10 +388,12 @@ starwars |>
 
 ### summarise()
 
+**👉 Your Turn** **⤵**
+
 ```{r}
 # Single summary
 starwars |> 
-  group_by(species) |> 
+  group_by(#ADD COLUMN) |> 
   summarise(avg_height = mean(height, na.rm = TRUE))
 
 # Multiple summaries
@@ -401,7 +415,7 @@ starwars |>
   group_by(species) |> 
   summarise(
     count = n(),
-    humans_count = sum(species == "Human", na.rm = TRUE),
+    humans_count = sum(species == #ADD SPECIES, na.rm = TRUE),
     avg_height = mean(height, na.rm = TRUE),
     height_range = max(height, na.rm = TRUE) - min(height, na.rm = TRUE),
     .groups = "drop"

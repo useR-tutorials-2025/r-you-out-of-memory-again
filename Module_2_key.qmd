@@ -225,17 +225,43 @@ When we glimpse our dataset, we notice that the **ISBN column is showing as null
 
 **For Arrow:**
 
--    Arrow creates a schema based on the first few thousand rows it samples
+-   Arrow creates a schema based on the first few thousand rows it samples
 
--    If it encounters mixed data types or parsing issues in the ISBN field, it may default to null
+-   If it encounters mixed data types or parsing issues in the ISBN field, it may default to null
 
--    This means we lose valuable bibliographic information that could be used for:
+-   This means we lose valuable bibliographic information that could be used for:
 
-    -    Identifying unique editions of books
+```         
+-    Identifying unique editions of books
 
-    -    Linking to external book databases
+-    Linking to external book databases
 
-    -    Analyzing publication patterns
+-    Analyzing publication patterns
+```
+
+**👉 Your Turn** **⤵ Remove the null**
+
+```{r}
+
+# Remove the current object that has the null ISBN issue
+rm(seattle_csv)
+
+# Recreate Seattle library checkout.csv data:
+# 1. Specify the CSV file path
+# 2. Set ISBN column to be read as string type to preserve leading zeros
+# 3. Define CSV as the file format
+
+
+
+
+#inspect
+
+
+
+
+```
+
+ANSWER::
 
 ```{r}
 # Remove the current object that has the null ISBN issue
@@ -513,6 +539,8 @@ Now let's build progressively more complex pipelines, always remembering: **filt
 
 **Question**: "What happened to library usage during the pandemic year of 2020?"
 
+**👉 Your Turn** **⤵**
+
 ```{r}
 pandemic_data <- seattle_parquet  |>   
   filter(CheckoutYear == 2020) |>   
@@ -534,6 +562,8 @@ pandemic_data |>
 **Question**: "Which types of materials were most popular in 2020 - did people shift to digital?"
 
 #### Build the pipeline: filter → group → summarise → arrange → collect
+
+**👉 Your Turn** **⤵**
 
 ```{r}
 
@@ -561,6 +591,8 @@ Extension to this exercise below
 
 #### Build the pipeline: filter → group → summarise → collect → plot
 
+**👉 Your Turn** **⤵**
+
 ```{r}
 
 monthly_trends <- seattle_parquet |>   
@@ -575,6 +607,8 @@ monthly_trends
 ```
 
 Create Visualization
+
+**👉 Your Turn** **⤵**
 
 ```{r}
 monthly_trends |>   
@@ -658,6 +692,8 @@ if (file.exists("data/parquet/seattle_parquet/")) {
 ```
 
 ## 🎯 Arrow Choose-Your-Own Challenge (15 minutes)
+
+**👉 Your Turn** **⤵**
 
 Work in pairs. Choose the challenge that matches your comfort level, then try the stretch goals!
 
@@ -764,6 +800,8 @@ yearly_analysis
 
 ### 🟡 Intermediate: Multi-step Pipeline + Visualization
 
+**👉 Your Turn** **⤵**
+
 ### Intermediate Challenge 1A Extension intermediate
 
 **Goal**: Create a quick visualization to see what is happening
@@ -841,6 +879,8 @@ material_summary |>
 ```
 
 ### Exercise 2 Extension intermediate Challenge 1
+
+**👉 Your Turn** **⤵**
 
 **Goal**: Analyze checkout trends by month during 2020 (pandemic year)
 

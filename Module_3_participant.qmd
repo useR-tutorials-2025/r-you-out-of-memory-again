@@ -1,0 +1,1199 @@
+---
+title: "Module_3_duckdb-key"
+author: "Elyse, Jeanne & Sheila"
+format: 
+  html: 
+    toc: true
+    toc-depth: 4
+    toc-location: right
+    code-fold: true
+  pdf:
+    toc: true
+    toc-depth: 4
+    toc-location: right
+editor: visual
+---
+
+## 🎯 Learning Objectives (Module 3)
+
+By the end of this module, you will be able to:
+
+-   **Understand** when to choose DuckDB over Arrow for analytical workloads
+
+-   **Connect** R to DuckDB databases for high-performance analytics
+
+-   **Execute** complex joins and window functions on large datasets
+
+-   **Leverage** SQL and dplyr interchangeably for data analysis
+
+-   **Optimize** analytical queries for multi-gigabyte datasets
+
+-   **Build** persistent analytical databases for reproducible research
+
+## 🧠 The Mindset Shift: From Files to Database
+
+### 💡 Arrow vs. DuckDB: When to Use What?
+
+**Arrow thinking** (Module 2):
+
+```         
+# Great for: Reading, filtering, format conversion
+open_dataset("file.parquet") |>
+  filter(year == 2023) |>
+  collect()
+```
+
+**DuckDB thinking** (Module 3):
+
+```         
+# Great for: Complex analytics, joins, aggregations
+#con <- dbConnect(duckdb())
+#seattle_tbl <- tbl(con, "seattle_checkouts")
+
+seattle_tbl |>
+  window_rank(CheckoutYear, Checkouts) |>
+  complex_join(other_table) |>
+  collect()
+```
+
+### 🔍 Key Concept: In-Process Analytics Database
+
+DuckDB is like having a **miniature data warehouse** running inside R:
+
+-   **In-process**: Runs directly in your R session (no separate server needed)
+
+-   **Columnar**: Optimized for analytical queries (fast aggregations)
+
+-   **SQL + dplyr**: Speaks both languages fluently
+
+-   **Persistent**: Can save your work and reuse it later
+
+Think of it like:
+
+-   **Arrow**: "A really smart file reader"
+
+-   **DuckDB**: "A personal analytics database"
+
+## 💡 **Rule of thumb:**
+
+-   **Simple filtering/reading**: Use Arrow
+
+-   **Complex analytics/joins**: Use DuckDB
+
+-   **Multiple related tables**: Definitely DuckDB
+
+-   **Window functions/advanced SQL**: DuckDB shines
+
+## 🚀 DuckDB Setup
+
+### 🛠️ Load Your Enhanced Toolkit
+
+```{r}
+# Enhanced package loading for database analytics
+required_packages <- c("tidyverse", "arrow", "duckdb", "DBI", "dbplyr", "glue")
+
+# Install missing packages
+for (pkg in required_packages) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    install.packages(pkg)
+  }
+}
+
+# Load all packages
+for (pkg in required_packages) {
+  library(pkg, character.only = TRUE)
+}
+
+```
+
+### 📂 Create Dataset Reference
+
+Make sure to get your referenced .csv with `open_dataset()`. Similar to how you would use `read_csv()` but we are not reading in a file:
+
+```{r}
+seattle_csv <- open_dataset(
+  sources = "data/seattle-library-checkouts.csv",
+  col_types = schema(ISBN = string()),
+  format = "csv"
+)
+```
+
+### 📂 Check Our Data Setup
+
+Let's verify we have our data files from Module 2:
+
+```{r}
+# Check if we have our CSV file
+csv_exists <- file.exists("data/seattle-library-checkouts.csv")
+parquet_exists <- dir.exists("data/parquet/seattle")
+
+glue("CSV file exists: {csv_exists}")
+glue("Parquet files exist: {parquet_exists}")
+
+if (csv_exists) {
+  file_size_gb <- file.size("data/seattle-library-checkouts.csv") / (1024^3)
+  glue("CSV file size: {round(file_size_gb, 2)} GB")
+}
+```
+
+**📝 Note:** We already created Parquet files in Module 2, but let's review the two approaches you can use:
+
+**Method 1: Simple Parquet** - This is what we created in Module 2:
+
+```{r}
+
+# Method 1: Simple Parquet (single folder, multiple files)
+# Good for: Smaller datasets, simple analytics
+
+# Save as regular Parquet files
+#write_dataset(
+#  seattle_csv,
+#  path = "data/parquet/seattle_parquet",
+#  format = "parquet"
+#)
+
+
+```
+
+**Method 2: Partitioned Parquet** - An alternative approach for time-series data:
+
+```{r}
+# Method 2: Partitioned Parquet (organized by year)
+# Good for: Large datasets, year-based filtering
+write_dataset(
+  seattle_csv,
+  path = "data/parquet/seattle_by_year",
+  format = "parquet",
+  partitioning = "CheckoutYear"  # Creates a folder for each year
+)
+
+
+```
+
+Just for fun lets see compare the file sizes...
+
+```{r}
+# Compare file sizes across all three methods
+
+# Original CSV
+csv_size_bytes <- file.size("data/seattle-library-checkouts.csv")
+csv_size_gb <- csv_size_bytes / (1024^3)
+glue("Original CSV size: {round(csv_size_gb, 2)} GB")
+
+# Simple parquet (from Method 1)
+simple_parquet_bytes <- sum(file.size(list.files("data/parquet/seattle_parquet/", 
+                                                full.names = TRUE, recursive = TRUE)))
+simple_parquet_gb <- simple_parquet_bytes / (1024^3)
+glue("Simple parquet size: {round(simple_parquet_gb, 2)} GB")
+
+# Partitioned parquet (from Method 2)
+partitioned_parquet_bytes <- sum(file.size(list.files("data/parquet/seattle_by_year/", 
+                                                     full.names = TRUE, recursive = TRUE)))
+partitioned_parquet_gb <- partitioned_parquet_bytes / (1024^3)
+glue("Partitioned parquet size: {round(partitioned_parquet_gb, 2)} GB")
+```
+
++-------------------------+----------------------------------------------------------------+------------------------------------------------------------------------+---------------------------------------------------+
+| Approach                | Best For                                                       | Key Benefits                                                           | Trade-offs                                        |
++=========================+================================================================+========================================================================+===================================================+
+| **Simple Parquet**      | 🎯 General analytics, exploratory work, datasets \< 5GB        | → **Simpler file structure** - easier to understand and manage         | → Slower filtering by year/date                   |
+|                         |                                                                |                                                                        |                                                   |
+|                         |                                                                | → **Faster initial setup** - no need to think about partitioning       | → Must scan entire dataset for time-based queries |
+|                         |                                                                |                                                                        |                                                   |
+|                         |                                                                | → **Universal compatibility** - works with any analysis tool           |                                                   |
++-------------------------+----------------------------------------------------------------+------------------------------------------------------------------------+---------------------------------------------------+
+| **Partitioned Parquet** | 🚀 Time-series analysis, production pipelines, datasets \> 5GB | → **Lightning-fast date filtering** - only reads relevant year folders | → More complex folder structure                   |
+|                         |                                                                |                                                                        |                                                   |
+|                         |                                                                | → **Organized structure** - easy to find specific time periods         | → Requires planning partitioning strategy         |
+|                         |                                                                |                                                                        |                                                   |
+|                         |                                                                | → **Scalable** - excellent performance even with massive datasets      | → Can create many small files if over-partitioned |
++-------------------------+----------------------------------------------------------------+------------------------------------------------------------------------+---------------------------------------------------+
+
+🏗️ **Connect to DuckDB: Your Personal Data Warehouse**
+
+```{r}
+# Create a persistent DuckDB database
+# (This is like opening a new Excel workbook, but for big data)
+con <- dbConnect(duckdb::duckdb(), dbdir = "data/seattle.duckdb")
+
+# Let's see what we're working with
+glue("✅ Connected to DuckDB database at: data/seattle.duckdb")
+```
+
+**What just happened?**
+
+-   Created a **persistent** DuckDB database file
+
+-   Established a connection we can use throughout our session
+
+-   The database will save our work even after R shuts down
+
+### 📊 Load Our Parquet Data into DuckDB
+
+Now we'll create a table in our database using the Parquet files we created in Module 2:
+
+```{r}
+# This reads from the Parquet files and creates a database table
+# Instead of loading all the data, we'll create a "window" to look through
+# This is called a VIEW - it lets us see the data without loading it all
+dbExecute(con, "
+  DROP TABLE IF EXISTS seattle_checkouts;
+  CREATE TABLE seattle_checkouts AS 
+  SELECT * 
+  FROM read_parquet('data/parquet/seattle_parquet/*.parquet')
+")
+
+# Verify our data loaded correctly
+record_count <- dbGetQuery(con, "SELECT COUNT(*) as total FROM seattle_checkouts")
+glue("📚 Loaded {format(record_count$total, big.mark = ',')} records into DuckDB")
+
+# Create our dplyr reference to the table
+seattle_tbl <- tbl(con, "seattle_checkouts")
+```
+
+**🔍 Quick Data Exploration**
+
+```{r}
+# Basic exploration using dplyr syntax
+seattle_tbl |>
+  summarise(
+    total_records = n(),
+    earliest_year = min(CheckoutYear, na.rm = TRUE),
+    latest_year = max(CheckoutYear, na.rm = TRUE),
+    total_checkouts = sum(Checkouts, na.rm = TRUE)
+  ) |>
+  collect()
+
+# Peek at the structure
+seattle_tbl |>
+  head(5) |>
+  collect()
+```
+
+**💡 What's the difference from Arrow?**
+
+With Arrow, we were always "viewing" files. With DuckDB, we've **loaded** the data into a database structure optimized for fast analytics!
+
+### 🔍 Understanding SQL vs. dplyr: Two Languages, Same Ideas (10 minutes)
+
+### 🧠 The Great News: You Already Know the Concepts!
+
+**This workshop is about using the dplyr that we know and love** - but understanding some SQL can help you see what's happening behind the scenes. DuckDB speaks both languages fluently!
+
+Your challenge: Create a new table called `seattle_by_year` using the partitioned files.
+
+### 💡 Do We Have to Use SQL?
+
+**Short answer: No!** This workshop focuses on **dplyr** because:
+
+-   You already know dplyr syntax
+
+-   It's more intuitive and readable
+
+-   **dbplyr** automatically translates dplyr to SQL for you
+
+-   You can be productive immediately
+
+**But knowing some SQL helps because:**
+
+-   You can see what dplyr is doing behind the scenes
+
+-   Some complex operations are cleaner in SQL
+
+-   You can mix both approaches when needed
+
+### 🔍 Basic SQL Operations (Just for Understanding)
+
+**1. Selecting Rows (WHERE = filter())**
+
+```{r}
+# dplyr approach (what we'll use most)
+seattle_tbl |>
+  filter(CheckoutYear == 2020) |>
+  head() |>
+  collect()
+
+# SQL equivalent (just for comparison)
+dbGetQuery(con, "
+  SELECT * 
+  FROM seattle_checkouts 
+  WHERE CheckoutYear = 2020
+  LIMIT 6
+")
+```
+
+**2. Selecting Columns (SELECT = select())**
+
+**👉 Your Turn** **⤵**
+
+```{r}
+# dplyr approach
+seattle_tbl |>
+  select(Title, Creator, CheckoutYear) |>
+  head() |>
+  #FILL IN FUNCTION TO BRING TO R
+
+# SQL equivalent
+dbGetQuery(con, "
+  SELECT Title, Creator, CheckoutYear
+  FROM seattle_checkouts 
+  LIMIT 6
+")
+```
+
+**3. Grouping and Summarizing (GROUP BY = group_by())**
+
+**👉 Your Turn** **⤵**
+
+```{r}
+# dplyr approach (our preferred method)
+seattle_tbl |>
+  group_by(MaterialType) |>
+  summarise(total_checkouts = sum(Checkouts)) |>
+  arrange(desc(total_checkouts)) |>
+  head() |>
+  #FILL IN FUNCTION TO BRING TO R
+
+# SQL equivalent
+dbGetQuery(con, "
+  SELECT MaterialType, SUM(Checkouts) as total_checkouts
+  FROM seattle_checkouts 
+  GROUP BY MaterialType
+  ORDER BY total_checkouts DESC
+  LIMIT 6
+")
+```
+
+### 🔄 The Magic: show_query() - See What dplyr Creates
+
+The best part about **dbplyr** is you can see the SQL translation:
+
+```{r}
+# Write dplyr code and see the SQL it generates
+seattle_tbl |>
+  filter(CheckoutYear >= 2020) |>
+  group_by(MaterialType) |>
+  summarise(
+    total_checkouts = sum(Checkouts),
+    avg_checkouts = mean(Checkouts)
+  ) |>
+  arrange(desc(total_checkouts)) |>
+  show_query()  # This shows you the SQL!
+```
+
+**🎯 Key Takeaway:**
+
+-   **Use dplyr** for your analysis (it's what this workshop teaches!)
+
+-   **Use `show_query()`** when you're curious about the SQL
+
+-   **Use direct SQL** only when you need something dplyr can't do easily
+
+### 🚀 Why This Matters for Big Data
+
+Both dplyr and SQL are **pushed down** to the database:
+
+**👉 Your Turn** **⤵**
+
+```{r}
+# This entire pipeline runs IN the database, not in R
+result <- seattle_tbl |>                   # Connect to table
+  filter(CheckoutYear >= 2020) |>          # Database does the filtering
+  group_by(MaterialType) |>                # Database does the grouping  
+  summarise(total = sum(Checkouts)) |>     # Database does the math
+  arrange(desc(total))                     # Database does the sorting
+  # Only when we add collect() does data come to R!
+
+# See the result (still in database)
+result
+
+# Bring it to R memory
+final_result <- result |> 
+  #FILL IN FUNCTION TO BRING TO R
+
+```
+
+**💡 The Big Idea:** Whether you write dplyr or SQL, the **database does the heavy lifting**, not R!
+
+### 🎯 Strategic `mutate()` Placement in Database Workflows (5 minutes)
+
+When working with databases like DuckDB, **where** you place your `mutate()` operations can dramatically affect performance and functionality.
+
+#### 💡 The Golden Rules for `mutate()` with Databases
+
+**✅ BEFORE `collect()` (Pushed to Database)**
+
+```{r}
+# These mutate operations happen IN the database (fast!)
+seattle_tbl |>
+  mutate(
+    # ✅ Simple transformations - database can handle these
+    checkout_decade = floor(CheckoutYear/10) * 10,
+    is_recent = CheckoutYear >= 2020,
+    title_length = LENGTH(Title)  # SQL function
+  ) |>
+  filter(is_recent == TRUE) |>  # Can filter on the new column!
+  collect()
+```
+
+❌ AFTER `collect()` (In R Memory)
+
+```{r eval=FALSE}
+# These mutate operations happen in R (slower, but more flexible)
+seattle_tbl |>
+  collect() |>  # Brings ALL data to R first!
+  mutate(
+    # Complex R-specific operations
+    title_words = str_count(Title, "\\w+"),
+    checkout_season = case_when(
+      CheckoutMonth %in% c(12,1,2) ~ "Winter",
+      CheckoutMonth %in% c(3,4,5) ~ "Spring", 
+      # ... more complex logic
+    )
+  )
+```
+
+```{r eval=FALSE}
+# ❌ SLOW: Bring all data to R, then transform
+system.time({
+  slow_result <- seattle_tbl |>
+    collect() |>  # Loads millions of rows into R!
+    mutate(checkout_decade = floor(CheckoutYear/10) * 10) |>
+    filter(checkout_decade == 2020)
+})
+
+# ✅ FAST: Transform in database, then collect filtered results  
+system.time({
+  fast_result <- seattle_tbl |>
+    mutate(checkout_decade = floor(CheckoutYear/10) * 10) |>
+    filter(checkout_decade == 2020) |>
+    collect()  # Only brings filtered results to R
+})
+```
+
+🤔 When to Use Each Approach
+
++-----------------------------------------+-------------------------------------------------+
+| Use `mutate()` BEFORE `collect()` when: | Use `mutate()` AFTER `collect()` when:          |
++=========================================+=================================================+
+| ✅ Simple math operations               | ❌ Complex string manipulation with R functions |
++-----------------------------------------+-------------------------------------------------+
+| ✅ Date/time extraction                 | ❌ Custom R functions                           |
++-----------------------------------------+-------------------------------------------------+
+| ✅ Basic case_when logic                | ❌ Advanced statistical calculations            |
++-----------------------------------------+-------------------------------------------------+
+| ✅ You need to filter on the new column | ❌ Complex joins with R objects                 |
++-----------------------------------------+-------------------------------------------------+
+
+#### 💡 Quick Decision Framework
+
+**Ask yourself**: "Can SQL do this operation?"
+
+-   **Yes** → `mutate()` before `collect()`
+
+-   **No** → `mutate()` after `collect()`
+
+-   **Not sure** → Try before first, move after if it fails!
+
+This strategic placement is one of the key skills that separates good big data analysts from great ones!
+
+### 🎯 Superpower 1: Lightning-Fast Aggregations
+
+Let's compare the same analysis using DuckDB vs. what we might do with regular R
+
+**🚀 Why this is impressive:**
+
+-   Processed millions of rows in seconds
+
+-   Calculated multiple statistics simultaneously
+
+-   All done in the database before bringing results to R
+
+### 🎯 Superpower 2: Window Functions Made Easy
+
+Window functions let you do advanced analytics like rankings, running totals, and comparisons within groups:
+
+```{r}
+# Find the top 3 most popular titles each year
+top_titles_by_year <- seattle_tbl |>
+  group_by(CheckoutYear, Title) |>
+  summarise(total_checkouts = sum(Checkouts), .groups = "drop") |>
+  group_by(CheckoutYear) |>
+  window_order(desc(total_checkouts)) |>
+  mutate(rank = row_number()) |>
+  filter(rank <= 3) |>
+  arrange(CheckoutYear, rank) |>
+  collect()
+
+# Display results
+top_titles_by_year |>
+  head(15)  # Show top 3 for first 5 years
+```
+
+**🎯 Advanced Window Functions:**
+
+```{r}
+# Calculate running totals and percentage changes
+monthly_trends <- seattle_tbl |>
+  group_by(CheckoutYear, CheckoutMonth) |>
+  summarise(monthly_checkouts = sum(Checkouts), .groups = "drop") |>
+  arrange(CheckoutYear, CheckoutMonth) |>
+  mutate(
+    # Running total throughout the dataset
+    cumulative_checkouts = cumsum(monthly_checkouts),
+    # Previous month's value for comparison
+    prev_month = lag(monthly_checkouts),
+    # Percentage change from previous month
+    pct_change = (monthly_checkouts - prev_month) / prev_month * 100
+  ) |>
+  collect()
+
+# Visualize the trends
+monthly_trends |>
+  filter(CheckoutYear >= 2018) |>
+  mutate(date = as.Date(paste(CheckoutYear, CheckoutMonth, "01", sep = "-"))) |>
+  ggplot(aes(x = date, y = monthly_checkouts)) +
+  geom_line(color = "steelblue", size = 1) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%Y-%m") +
+  scale_y_continuous(labels = scales::comma_format()) +
+  theme_minimal() +
+  labs(
+    title = "Monthly Library Checkouts with Trend Analysis",
+    x = "Year",
+    y = "Monthly Checkouts"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### 🎯 Superpower 3: SQL and dplyr Interchangeability
+
+One of DuckDB's greatest strengths is that you can use SQL and dplyr **interchangeably**:
+
+```{r}
+# Method 1: Pure dplyr
+dplyr_result <- seattle_tbl |>
+  filter(CheckoutYear == 2020) |>
+  group_by(MaterialType) |>
+  summarise(total = sum(Checkouts)) |>
+  arrange(desc(total)) |>
+  collect()
+
+#inspect
+dplyr_result
+
+# Method 2: Pure SQL
+sql_result <- dbGetQuery(con, "
+  SELECT MaterialType, SUM(Checkouts) as total
+  FROM seattle_checkouts 
+  WHERE CheckoutYear = 2020
+  GROUP BY MaterialType
+  ORDER BY total DESC
+")
+
+#inspect
+sql_result
+
+# Method 3: Mixed approach - see the SQL that dplyr generates
+seattle_tbl |>
+  filter(CheckoutYear == 2020) |>
+  group_by(MaterialType) |>
+  summarise(total = sum(Checkouts)) |>
+  show_query()
+```
+
+## 🔄 Real-World Analytics Pipeline (25 minutes)
+
+### 🎯 Exercise 1: Multi-Table Analysis (10 minutes)
+
+**🤔 Research Question:** "How have different categories of library materials (Books, Digital, Video, Audio) performed over time? Are digital formats really growing faster than physical ones?"
+
+This is a perfect question for demonstrating **joins** - one of DuckDB's superpowers! We want to:
+
+-   Create a lookup table to categorize our materials
+
+-   Join our main data with this categorization
+
+-   Analyze trends across categories and formats
+
+-   Compare digital vs. physical growth patterns
+
+🎯 Step 1: Create a Material Categories Lookup Table
+
+**👉 Your Turn** **⤵**
+
+```{r}
+
+# Create a material categories lookup table using dplyr
+material_categories <- seattle_tbl |>
+  select(#FILL IN COLUMN) |>
+  distinct() |>
+  mutate(
+    category = case_when(
+      MaterialType %in% c('EBOOK', 'AUDIOBOOK') ~ 'Digital',
+      MaterialType %in% c('BOOK', 'LARGEPRINT', 'REGPRINT') ~ 'Books',
+      str_detect(MaterialType, 'VIDEO|DVD') ~ 'Video',
+      str_detect(MaterialType, 'SOUND|CD') ~ 'Audio',
+      TRUE ~ 'Other'
+    ),
+    format_type = case_when(
+      MaterialType %in% c('EBOOK', 'AUDIOBOOK') ~ 'Digital',
+      TRUE ~ 'Physical'
+    )
+  ) |>
+  compute(name = "material_categories")
+
+# Create our reference to the new table (it's already created above)
+material_cat <- material_categories
+
+# Look at our categories
+material_cat |> 
+  #FILL IN FUNCTION TO BRING TO R
+
+
+```
+
+**🎯 Step 2: Try a Complex Join (Let's See What Happens!)**
+
+Now let's join our main data with our lookup table:
+
+**👉 Your Turn** **⤵**
+
+```{r eval=FALSE}
+# Complex analysis combining our main data with categories
+category_analysis <- seattle_tbl |>
+  left_join(material_cat, by = "MaterialType") |>
+  filter(CheckoutYear >= 2018) |>
+  group_by(CheckoutYear, category, format_type) |>
+  summarise(
+    total_checkouts = sum(Checkouts),
+    unique_titles = n_distinct(Title),
+    avg_checkouts_per_title = total_checkouts / unique_titles,
+    .groups = "drop"
+  ) |>
+  #FILL IN FUNCTION TO BRING TO R
+
+#Inspect
+category_analysis
+
+```
+
+❌❌ OHHHH NOOO!!!! ❌❌ You got an error. DO you know why? Read on young pawan!
+
+**Why This Happens:**
+
+-   **dbplyr** translates your code to SQL
+
+-   SQL doesn't allow you to reference a column you're creating in the same SELECT statement
+
+-   The error message is actually quite helpful - it tells you exactly what to do!
+
+**The Fix:** You need to split this into two steps or use a different approach because SQL can't reference `MaterialType` after you've already transformed it in the same query. You either need to:
+
+1.  **Use the original column name throughout**
+
+2.  **Split into multiple steps**
+
+3.  **Use a subquery approach with compute() between steps**
+
+The SQL engine gets confused when you try to reference a column that's being created in the same statement - it's like trying to use a variable before you've finished declaring it!
+
+🎯 **Step 3:** Fix the Code (Your Turn!)\*\*
+
+Update the code above so it will run.
+
+👉 Your Turn **⤵**
+
+**Hint:** Move the calculation to a separate `mutate()` step.
+
+```{r}
+# Complex analysis combining our main data with categories
+category_analysis <- seattle_tbl |>
+  left_join(material_cat, by = "MaterialType") |>
+  filter(CheckoutYear >= 2018) |>
+  group_by(CheckoutYear, category, format_type) |>
+  summarise(
+    total_checkouts = sum(Checkouts),
+    unique_titles = n_distinct(Title),
+    .groups = "drop"
+  ) |>
+  # Add the calculated column in a separate mutate step
+  mutate(avg_checkouts_per_title = #FILL IN CALCULATION) |>
+  collect()
+
+
+```
+
+The key differences are:
+
+1.  **In the `summarise()` function:**
+
+```         
+-    **REMOVED:** `avg_checkouts_per_title = total_checkouts / unique_titles,`  -    This line was moved out because SQL can't reference columns being created in the same statement
+```
+
+2.  **ADDED a separate `mutate()` step:**
+
+```         
+-    `mutate(avg_checkouts_per_title = total_checkouts / unique_titles) |>`  -    This calculates the average in a separate step after the aggregation is complete
+```
+
+**🎯 Step 4: Visualize the Results**
+
+👉 Your Turn **⤵**
+
+```{r}
+# Visualize the category trends
+category_analysis |>
+  ggplot(aes(x = #FILL IN X-AXIS, y = #FILL IN Y-AXIS, 
+             color = category, linetype = format_type)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 2) +
+  theme_minimal() +
+  labs(
+    title = "Library Checkouts by Category and Format (2018-2023)",
+    subtitle = "Comparing different material types and digital vs. physical formats",
+    x = "Year",
+    y = "Total Checkouts",
+    color = "Category",
+    linetype = "Format Type"
+  ) +
+  scale_y_continuous(labels = scales::comma) +
+  theme(legend.position = "bottom")
+```
+
+**🎯 Step 5: Answer Our Research Question**
+
+**Turn and Talk** (3 minutes):
+
+-   What trends do you see in digital vs. physical checkouts?
+
+-   Which categories seem most affected by recent changes?
+
+-   How might the library use this information for collection development?
+
+**💡 Key Learning Points:**
+
+-   **LEFT JOIN** kept all our checkout records and added category information
+
+-   **Two-step calculations** avoid SQL reference errors
+
+-   **Complex analysis** becomes manageable when broken into clear steps
+
+-   **Real insights** emerge from combining multiple data perspectives
+
+### **🔗 What is a JOIN? (Think of it like dating apps!)**
+
+Imagine you have two lists:
+
+-   **List A**: People's names and their favorite books
+
+-   **List B**: Book titles and their authors
+
+A **JOIN** is like playing matchmaker - you connect the two lists based on something they have in common (the book title)!
+
++----------------+-----------------------------------------------------------+----------------------------------------------------------------------+
+| Join Type      | Dating App Analogy                                        | What it does                                                         |
++================+===========================================================+======================================================================+
+| **INNER JOIN** | 📱 "Only show matches where both people liked each other" | Only keep records that exist in BOTH tables                          |
++----------------+-----------------------------------------------------------+----------------------------------------------------------------------+
+| **LEFT JOIN**  | 💝 "Show all people from List A, even if no book match"   | Keep ALL records from left table, add info from right when available |
++----------------+-----------------------------------------------------------+----------------------------------------------------------------------+
+| **RIGHT JOIN** | 💘 "Show all books, even if no person likes them"         | Keep ALL records from right table (less common)                      |
++----------------+-----------------------------------------------------------+----------------------------------------------------------------------+
+| **FULL JOIN**  | 🌍 "Show everyone and everything"                         | Keep ALL records from both tables                                    |
++----------------+-----------------------------------------------------------+----------------------------------------------------------------------+
+
+### 🎯 Exercise 2: Understanding Joins with our data and duckdb (10 minutes)
+
+**🤔 Research Question:** "Do books with complete author information get checked out more often than books with missing author details?"
+
+This is a great question for learning joins! We want to:
+
+-   Compare checkout patterns for books with vs. without author information
+
+-   Combine information from multiple "tables" (views of our data)
+
+-   Use joins to connect book metadata with checkout statistics
+
+**🎯 Step 1: Create Book Information Table**
+
+👉 Your Turn **⤵**
+
+```{r}
+# Create books_info with author status
+books_info <- seattle_tbl |>
+  select(#FILL IN COLUMNS NAMES HINT 3) |>
+  filter(MaterialType == "BOOK") |>
+  distinct() |>
+  mutate(
+    has_author = case_when(
+      is.na(Creator) | Creator == "" ~ "Missing Author",
+      TRUE ~ "Has Author"
+    )
+  )
+
+```
+
+#### **👉 Your Turn** **⤵** - Inspect what we have\*\*
+
+```{r}
+# Inspect
+
+```
+
+**🎯 Step 2: Create Checkout Statistics Table**
+
+```{r}
+# Create checkout_stats
+checkout_stats <- seattle_tbl |>
+  filter(MaterialType == "BOOK") |>
+  group_by(Title) |>
+  summarise(
+    total_checkouts = sum(Checkouts),
+    .groups = "drop"
+  )
+
+
+```
+
+#### **👉 Your Turn** **⤵** - Inspect what we have\*\*
+
+```{r}
+# Inspect
+
+```
+
+**🎯 Step 3: INNER JOIN - Books in Both Tables**
+
+👉 Your Turn **⤵**
+
+```{r}
+# INNER JOIN - only books that exist in BOTH tables
+books_with_checkouts <- books_info |>
+  inner_join(#FILL IN TABLE NAME, by = "Title") |>
+  collect()
+
+# Inspect
+books_with_checkouts |> 
+  head()
+```
+
+**🎯 Step 4: Answer Our Research Question**
+
+```{r}
+
+# Compare books with vs without author information
+author_impact <- books_with_checkouts |>
+  group_by(has_author) |>
+  summarise(
+    book_count = n(),
+    avg_checkouts = mean(total_checkouts),
+    median_checkouts = median(total_checkouts)
+  )
+
+#inspect
+author_impact
+```
+
+**🎯 Step 5: Visualize the Results**
+
+```{r}
+# Create a simple comparison
+author_impact |>
+  ggplot(aes(x = #FILL IN X-AXIS, y = #FILL IN Y-AXIS, fill = has_author)) +
+  geom_col() +
+  theme_minimal() +
+  labs(
+    title = "Do Books with Author Info Get Checked Out More?",
+    x = "Author Information",
+    y = "Average Checkouts"
+  ) +
+  scale_fill_manual(values = c("Missing Author" = "#d73027", "Has Author" = "#1a9850"))
+```
+
+## 🎯 Choose Your DuckDB Adventure (15 minutes)
+
+Work in pairs, or by yourself to tackle these real-world analytical challenges or take a brain break:
+
+### 🟢 Beginner Challenge: Popular Authors Analysis
+
+#### **👉 Your Turn** **⤵**
+
+**Goal:** Analyze the trend from physical to digital library materials over time.
+
+**Your mission:**
+
+1.  Create a list of digital material types
+
+2.  Use `case_when()` to classify materials as "Digital" or "Physical"
+
+3.  Group by CheckoutYear and format_type
+
+4.  Calculate total checkouts per year for each format
+
+5.  Create two visualizations: trend lines and percentage breakdown
+
+**Helpful hints for beginners:**
+
+-   Use `%in%` to check if MaterialType is in your digital_materials list
+
+-   Use `case_when()` with `TRUE ~ "Physical"` as the default case
+
+-   Remember to use `.groups = "drop"` in your summarise
+
+-   Don't forget to `collect()` before creating visualizations!
+
+-   Use `geom_line()` for trends and `geom_col()` for percentages
+
+```{r}
+# Classify materials as digital or physical
+
+
+
+
+# Visualize the trends
+
+
+# BONUS::percentage of digital vs physical for each year
+
+
+
+# BONUS:: Visualize the changing percentages
+
+
+
+```
+
+### 🟡 Intermediate Challenge: Popular Authors Analysis
+
+#### **👉 Your Turn** **⤵**
+
+**Goal:** Find the most popular authors by checkout volume and diversity.
+
+**Your mission:**
+
+1.  Filter to books only and remove missing author information
+
+2.  Group by Creator (author)
+
+3.  Calculate total checkouts, unique titles, and average checkouts per title
+
+4.  Filter to authors with at least 5 different titles
+
+5.  Rank by total checkouts and create a horizontal bar chart
+
+**Helpful hints for intermediate:**
+
+-   Use `filter(!is.na(Creator) & Creator != "")` to remove missing authors
+
+-   Remember the mutate-after-summarise pattern for calculated columns
+
+-   Use `n_distinct(Title)` to count unique titles per author
+
+-   Use `coord_flip()` to make horizontal bars
+
+-   Use `reorder(Creator, total_checkouts)` to sort bars by value
+
+```{r}
+# Step 1: Filter to books only
+
+
+# Step 2: Group by Subjects column and CheckoutYear  
+# Step 3: Calculate total checkouts per subject per year
+
+
+# Step 4: Find the top 10 subjects by total checkouts
+
+
+# Filter to just the top 10 subjects for cleaner visualization
+
+
+# Step 5: Create a visualization showing trends over time
+
+
+
+# Bonus: Summary table of top subjects
+
+
+#INSPECT SUMMARY
+
+```
+
+## 🧹 Cleanup: Closing Your Database Connection
+
+Always remember to close your database connections when you're done:
+
+```         
+# Close the DuckDB connection 
+dbDisconnect(con, shutdown = TRUE)  
+
+# Verify it's closed 
+glue("✅ DuckDB connection closed successfully")
+```
+
+**🔧 Connection Best Practices:**
+
+```         
+# Method 1: Explicit cleanup (recommended for scripts) 
+con <- dbConnect(duckdb(), "data/seattle.duckdb") 
+
+# ... do your analysis ... 
+dbDisconnect(con, shutdown = TRUE)  
+
+# Method 2: 
+Automatic cleanup with on.exit() (good for functions) 
+
+analyze_library_data <- function() 
+  {con <- dbConnect(duckdb(), "data/seattle.duckdb")   
+  on.exit(dbDisconnect(con, shutdown = TRUE))  # Always runs, even if error      
+
+# Your analysis code here   
+result <- tbl(con, "seattle_checkouts") |>      
+  summarise(total = sum(Checkouts)) |>      
+    collect()
+         
+
+return(result)   
+# Connection closes automatically when function exits }  
+
+# Method 3: Check for existing connections 
+
+if (exists("con") && !is.null(con)) {dbDisconnect(con, shutdown = TRUE)}
+```
+
+**Why close connections?**
+
+-   **Free memory**: Releases database resources
+
+-   **Prevent errors**: Avoids "connection already exists" issues
+
+-   **Good practice**: Professional database hygiene
+
+-   **File locks**: Allows other processes to access the database file
+
+**💡 The `shutdown = TRUE` parameter:**
+
+-   Completely shuts down the DuckDB instance
+
+-   Required for persistent databases (those saved to files)
+
+-   Ensures the database file is properly closed
+
+## 🧠 Key Takeaways from Module 3
+
+### ✅ What You've Accomplished Today
+
+🎉 **Congratulations!** You've just:
+
+-   Connected R to a high-performance analytical database
+
+-   Executed complex joins and aggregations on millions of rows
+
+```         
+Used window functions for advanced time-series analysis
+```
+
+-   Leveraged both SQL and dplyr syntax interchangeably
+
+-   Built persistent databases for reproducible analytics
+
+-   Optimized queries for maximum performance
+
+### 🔑 Essential DuckDB Patterns to Remember
+
+1.  **The Connection Pattern**:
+
+````         
+```         
+con <- dbConnect(duckdb(), "database.duckdb")  # Create persistent DB seattle_tbl <- tbl(con, "table_name")          # Create dplyr reference
+```
+````
+
+2.  **The SQL-dplyr Bridge Pattern**:
+
+````         
+```         
+# See what dplyr generates 
+query |> 
+  show_query()  
+  
+# Use SQL directly when needed 
+  dbGetQuery(con, "SELECT ...")  
+  
+# Mix both approaches 
+  tbl(con, "table") |> 
+    filter(...) |> 
+    show_query()
+```
+````
+
+3.  **The Window Function Pattern**:
+
+````         
+```         
+data |>   
+  group_by(category) |>   
+  window_order(date) |>   
+  mutate(rank = row_number(),     
+        cumulative = cumsum(value),    
+        pct_change = (value - lag(value)) / lag(value))
+```
+````
+
+**🔧 When to Choose Each Tool**
+
+| Task                    | Arrow        | DuckDB       |
+|-------------------------|--------------|--------------|
+| **Reading large files** | ✅ Best      | ✅ Good      |
+| **Simple filtering**    | ✅ Fast      | ✅ Fast      |
+| **Complex joins**       | ❌ Limited   | ✅ Excellent |
+| **Window functions**    | ❌ No        | ✅ Excellent |
+| **SQL queries**         | ❌ No        | ✅ Native    |
+| **Persistent storage**  | ❌ No        | ✅ Yes       |
+| **Memory efficiency**   | ✅ Excellent | ✅ Good      |
+
+### 🚀 Coming Up: Advanced Applications
+
+Now you have the complete toolkit:
+
+-   **dplyr**: Intuitive data manipulation grammar
+
+-   **Arrow**: Efficient large file processing
+
+-   **DuckDB**: Database-powered analytics
+
+**In real projects, you'll often use all three:**
+
+1.  **Arrow** to efficiently read your data
+
+2.  **DuckDB** for complex analytics and joins
+
+3.  **dplyr** as your consistent interface to both
+
+### 📝 Quick Self-Assessment
+
+**I feel confident that I can**:
+
+-   Connect R to DuckDB databases
+
+-   Choose between Arrow and DuckDB for different tasks
+
+-   Use window functions for advanced analytics
+
+-   Build reproducible analytical pipelines
+
+**I'd like more practice with**:
+
+-   SQL queries
+
+-   Window function syntax
+
+-   Performance optimization
+
+-   Multi-table joins
+
+-   Mixed SQL/dplyr workflows
+
+**Ready to apply these tools to your own data? You now have professional-grade capabilities for analyzing datasets of any size!**
+
+*NSF Acknowledgement: This material is based upon work supported by the National Science Foundation under Grant #DGE-2222148. Any opinions, findings, and conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the views of the National Science Foundation.*

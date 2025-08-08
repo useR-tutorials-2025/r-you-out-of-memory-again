@@ -225,17 +225,39 @@ When we glimpse our dataset, we notice that the **ISBN column is showing as null
 
 **For Arrow:**
 
--    Arrow creates a schema based on the first few thousand rows it samples
+-   Arrow creates a schema based on the first few thousand rows it samples
 
--    If it encounters mixed data types or parsing issues in the ISBN field, it may default to null
+-   If it encounters mixed data types or parsing issues in the ISBN field, it may default to null
 
--    This means we lose valuable bibliographic information that could be used for:
+-   This means we lose valuable bibliographic information that could be used for:
 
-    -    Identifying unique editions of books
+```         
+-    Identifying unique editions of books
 
-    -    Linking to external book databases
+-    Linking to external book databases
 
-    -    Analyzing publication patterns
+-    Analyzing publication patterns
+```
+
+👉 **Your Turn ⤵ Remove the null**
+
+```{r}
+# Remove the current object that has the null ISBN issue
+rm(seattle_csv)
+
+# Recreate Seattle library checkout.csv data:
+# 1. Specify the CSV file path
+# 2. Set ISBN column to be read as string type to preserve leading zeros
+# 3. Define CSV as the file format
+
+
+
+
+#inspect
+
+```
+
+**ANSWER::**
 
 ```{r}
 # Remove the current object that has the null ISBN issue
@@ -255,7 +277,6 @@ seattle_csv <- open_dataset(
 glimpse(seattle_csv)
 ```
 
-
 **Key insight**: Arrow creates a "catalog" or "view" of your data without actually reading it into memory!
 
 ### 🎯 **Understanding `collect()`: The Bridge Between Arrow and R**
@@ -267,6 +288,8 @@ glimpse(seattle_csv)
 -   Think of it as the "Go!" button that turns your query plan into actual data
 
 ### 🔍 Exploring Structure Without Loading
+
+👉 **Your Turn ⤵**
 
 ```{r}
 
@@ -282,7 +305,7 @@ glue("Number of columns: {ncol(seattle_csv)}")
 # 3. SMART SAMPLING (minimal data loading)
 seattle_csv |> 
   slice_sample(n = 1000) |>  # Random sample instead of just head()
-  glimpse()
+  #ADD FUNCTION TO GLIMPSE THE DATA
 
 # 4. COLUMN-WISE EXPLORATION (targeted queries)
 seattle_csv |> 
@@ -306,7 +329,7 @@ data_summary <- seattle_csv |>
   ) |> 
   collect()
 
-# Then print when it's done
+# INSPECT
 data_summary
 
 # 5. CHECK FOR MISSING DATA
@@ -512,6 +535,8 @@ Now let's build progressively more complex pipelines, always remembering: **filt
 
 **Question**: "What happened to library usage during the pandemic year of 2020?"
 
+**👉 Your Turn** **⤵**
+
 ```{r eval=FALSE}
 pandemic_data <- seattle_parquet  |>   
   filter(#FILL IN HERE) |>   
@@ -533,6 +558,8 @@ pandemic_data |>
 **Question**: "Which types of materials were most popular in 2020 - did people shift to digital?"
 
 #### Build the pipeline: filter → group → summarise → arrange → collect
+
+**👉 Your Turn** **⤵**
 
 ```{r eval=FALSE}
 
@@ -560,6 +587,8 @@ Extension to this exercise below
 
 #### Build the pipeline: filter → group → summarise → collect → plot
 
+**👉 Your Turn** **⤵**
+
 ```{r eval = FALSE}
 
 monthly_trends <- seattle_parquet |>   
@@ -574,6 +603,8 @@ monthly_trends
 ```
 
 Create Visualization
+
+**👉 Your Turn** **⤵**
 
 ```{r}
 monthly_trends |>   
@@ -660,7 +691,9 @@ if (file.exists("data/parquet/seattle_parquet/")) {
 
 Work in pairs. Choose the challenge that matches your comfort level, then try the stretch goals!
 
-### 🟢 Beginner Challenge 1A: Material Type Analysis
+### 🟢 Beginner Challenge : Material Type Analysis
+
+**👉 Your Turn** **⤵**
 
 **Goal**: Build a dplyr pipeline to summarize checkouts by MaterialType across all years.
 
@@ -755,7 +788,9 @@ Work in pairs. Choose the challenge that matches your comfort level, then try th
 
 ### 🟡 Intermediate: Multi-step Pipeline + Visualization
 
-### Intermediate Challenge 1A Extension intermediate
+### Intermediate Challenge 1A 
+
+**👉 Your Turn** **⤵**
 
 **Goal**: Create a quick visualization to see what is happening
 
